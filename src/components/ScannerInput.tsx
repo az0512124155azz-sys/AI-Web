@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { DEMO_PRESET_SITES } from '../lib/presets';
 import { PresetSite } from '../lib/types';
-import { Globe, Code2, AlertTriangle, ArrowLeft, RefreshCw, FileText } from 'lucide-react';
+import { Globe, Code2, AlertTriangle, ArrowLeft, RefreshCw, FileText, Sparkles, CheckCircle2 } from 'lucide-react';
 
 interface ScannerInputProps {
   onAnalyze: (html: string, url?: string) => void;
@@ -19,11 +19,26 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
   const [htmlCode, setHtmlCode] = useState('');
   const [inputError, setInputError] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isNetworkFetching, setIsNetworkFetching] = useState(false);
+
+  // Fetch with strict timeout using AbortController
+  const fetchWithTimeout = async (requestUrl: string, options: RequestInit = {}, timeoutMs = 4000): Promise<Response> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(requestUrl, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+      return res;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  };
 
   const fetchHtmlViaNetwork = async (targetUrl: string): Promise<string> => {
-    // 1. Try local/Vercel API via GET
+    // 1. Try local/Vercel server API first (fastest if backend exists)
     try {
-      const getRes = await fetch(`/api/fetch-url?url=${encodeURIComponent(targetUrl)}`);
+      const getRes = await fetchWithTimeout(`/api/fetch-url?url=${encodeURIComponent(targetUrl)}`, {}, 3000);
       if (getRes.ok) {
         const data = await getRes.json();
         if (data.success && data.html && data.html.length > 50) {
@@ -31,33 +46,15 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
         }
       }
     } catch {
-      // Proceed to POST
+      // Proceed to public proxies
     }
 
-    // 2. Try local/Vercel API via POST
+    // 2. Try codetabs proxy
     try {
-      const postRes = await fetch('/api/fetch-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: targetUrl }),
-      });
-      if (postRes.ok) {
-        const data = await postRes.json();
-        if (data.success && data.html && data.html.length > 50) {
-          return data.html;
-        }
-      }
-    } catch {
-      // Proceed to public fallback proxies
-    }
-
-    // 3. Fallback: allorigins
-    try {
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-      const res = await fetch(proxyUrl);
-      if (res.ok) {
-        const text = await res.text();
-        if (text && text.length > 50 && !text.includes('Error: Request failed')) {
+      const proxyRes = await fetchWithTimeout(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`, {}, 3500);
+      if (proxyRes.ok) {
+        const text = await proxyRes.text();
+        if (text && text.length > 50 && !text.includes('CodeTabs - Error')) {
           return text;
         }
       }
@@ -65,21 +62,35 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
       // Proceed
     }
 
-    // 4. Fallback: corsproxy
+    // 3. Try corsproxy.io
     try {
-      const proxyUrl2 = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
-      const res2 = await fetch(proxyUrl2);
-      if (res2.ok) {
-        const text2 = await res2.text();
-        if (text2 && text2.length > 50) {
-          return text2;
+      const proxyRes = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, {}, 3500);
+      if (proxyRes.ok) {
+        const text = await proxyRes.text();
+        if (text && text.length > 50) {
+          return text;
         }
       }
     } catch {
       // Proceed
     }
 
-    throw new Error('לא התקבלה גישה לדף (חסימת בוטים של Cloudflare או אבטחת מקור באתר היעד). מומלץ לפתוח את האתר בדפדפן, להעתיק את קוד המקור (View Source), ולהזינו בלשונית "הדבקת קוד HTML".');
+    // 4. Try allorigins json endpoint
+    try {
+      const proxyRes = await fetchWithTimeout(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`, {}, 3500);
+      if (proxyRes.ok) {
+        const json = await proxyRes.json();
+        if (json && json.contents && json.contents.length > 50) {
+          return json.contents;
+        }
+      }
+    } catch {
+      // All attempts exhausted
+    }
+
+    throw new Error(
+      'דפדפנים אינם מאפשרים סריקה ישירה של אתרים חיצוניים ללא שרת (מגבלת CORS / הגנת Cloudflare). באפשרותך לפתוח את האתר בדפדפן, להעתיק את קוד המקור (Ctrl+U) ולהדביק אותו בלשונית "הדבקת קוד HTML", או לבחור באחת מדוגמאות ההמחשה המוכנות מראש.'
+    );
   };
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
@@ -89,7 +100,7 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
 
     const trimmed = url.trim();
     if (!trimmed) {
-      setInputError('יש להזין כתובת אתר תקינה לבדיקה.');
+      setInputError('נא להזין כתובת אתר (לדוגמה: example.com) או לבחור דוגמה מוכנה למטה.');
       return;
     }
 
@@ -99,20 +110,22 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
       setUrl(targetUrl);
     }
 
-    // URL format validation
     try {
       new URL(targetUrl);
     } catch {
-      setInputError('מבנה הכתובת אינו תקין. ודאו שהכתובת כוללת דומיין תקני (לדוגמה: https://mysite.com).');
+      setInputError('מבנה הכתובת אינו תקין. יש לוודא שהכתובת כוללת דומיין (למשל: https://mysite.com).');
       return;
     }
 
+    setIsNetworkFetching(true);
     try {
       const html = await fetchHtmlViaNetwork(targetUrl);
+      setIsNetworkFetching(false);
       onAnalyze(html, targetUrl);
     } catch (err: unknown) {
+      setIsNetworkFetching(false);
       const error = err as Error;
-      setFetchError(error.message || 'אירעה שגיאה בטעינת האתר.');
+      setFetchError(error.message || 'אירעה שגיאה בגישה לאתר.');
     }
   };
 
@@ -143,6 +156,8 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
     onAnalyze(preset.html, preset.url);
   };
 
+  const isBusy = isLoading || isNetworkFetching;
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-7">
       
@@ -155,7 +170,11 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
             aria-selected={activeTab === 'url'}
             aria-controls="panel-url"
             id="tab-url"
-            onClick={() => setActiveTab('url')}
+            onClick={() => {
+              setActiveTab('url');
+              setInputError(null);
+              setFetchError(null);
+            }}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               activeTab === 'url'
                 ? 'bg-amber-500 text-slate-950 font-bold'
@@ -172,7 +191,11 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
             aria-selected={activeTab === 'html'}
             aria-controls="panel-html"
             id="tab-html"
-            onClick={() => setActiveTab('html')}
+            onClick={() => {
+              setActiveTab('html');
+              setInputError(null);
+              setFetchError(null);
+            }}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               activeTab === 'html'
                 ? 'bg-amber-500 text-slate-950 font-bold'
@@ -185,7 +208,7 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
         </div>
 
         <span className="text-[11px] text-slate-400 hidden sm:inline">
-          בדיקת DOM וסגנונות ללא LLM
+          בדיקה אלגוריתמית 100% דטרמיניסטית
         </span>
       </div>
 
@@ -212,25 +235,27 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
                 name="url"
                 type="url"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  if (inputError) setInputError(null);
+                }}
                 placeholder="https://example.com"
                 dir="ltr"
                 aria-required="true"
                 aria-invalid={inputError !== null}
-                aria-describedby={inputError ? 'url-error-msg' : undefined}
                 className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 font-mono text-xs sm:text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
-                disabled={isLoading}
+                disabled={isBusy}
               />
 
               <button
                 type="submit"
-                disabled={isLoading}
-                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold text-xs sm:text-sm rounded-lg transition-colors flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                disabled={isBusy}
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold text-xs sm:text-sm rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
               >
-                {isLoading ? (
+                {isBusy ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" />
-                    <span>בודק...</span>
+                    <span>{isNetworkFetching ? 'מתחבר לאתר...' : 'בודק...'}</span>
                   </>
                 ) : (
                   <>
@@ -244,7 +269,6 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
 
           {inputError && (
             <p
-              id="url-error-msg"
               role="alert"
               className="text-xs text-rose-400 flex items-center gap-1.5 pt-1"
             >
@@ -252,6 +276,22 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
               <span>{inputError}</span>
             </p>
           )}
+
+          {/* Quick Demo Badges */}
+          <div className="pt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            <span className="text-[11px] text-slate-400">או נסו דוגמה מיידית:</span>
+            {DEMO_PRESET_SITES.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => handleSelectPreset(preset)}
+                className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-300 border border-slate-700 transition-colors text-[11px] flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                <span>{preset.name.replace(/דוגמה מתועדת [א-ת]׳:\s*/, '')}</span>
+              </button>
+            ))}
+          </div>
         </form>
       )}
 
@@ -277,20 +317,20 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
               name="htmlCode"
               rows={6}
               value={htmlCode}
-              onChange={(e) => setHtmlCode(e.target.value)}
-              placeholder="הדביקו כאן את תגיות ה-HTML של הדף (Ctrl+U בדפדפן > העתקת המקור > הדבקה כאן)..."
+              onChange={(e) => {
+                setHtmlCode(e.target.value);
+                if (inputError) setInputError(null);
+              }}
+              placeholder="הדביקו כאן את תגיות ה-HTML של הדף (Ctrl+U בדפדפן > בחירת הכל Ctrl+A > העתקה והדבקה כאן)..."
               dir="ltr"
               aria-required="true"
-              aria-invalid={inputError !== null}
-              aria-describedby={inputError ? 'html-error-msg' : undefined}
               className="w-full p-3 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-600 font-mono text-xs leading-relaxed resize-y focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
-              disabled={isLoading}
+              disabled={isBusy}
             />
           </div>
 
           {inputError && (
             <p
-              id="html-error-msg"
               role="alert"
               className="text-xs text-rose-400 flex items-center gap-1.5"
             >
@@ -299,13 +339,16 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
             </p>
           )}
 
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center pt-1">
+            <span className="text-[11px] text-slate-400">
+              * קוד ה-HTML מעובד מקומית בדפדפן בלבד ואינו נשלח לשום שרת
+            </span>
             <button
               type="submit"
-              disabled={isLoading}
-              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs sm:text-sm rounded-lg transition-colors flex items-center gap-2"
+              disabled={isBusy}
+              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs sm:text-sm rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
             >
-              {isLoading ? (
+              {isBusy ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" />
                   <span>בודק קוד...</span>
@@ -322,16 +365,20 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
       )}
 
       {/* Accessible Loading State */}
-      {isLoading && (
+      {isBusy && (
         <div
           role="status"
           aria-live="polite"
-          className="mt-4 p-3.5 bg-slate-950 border border-slate-800 rounded-lg flex items-center gap-3"
+          className="mt-4 p-3.5 bg-slate-950 border border-slate-800 rounded-lg flex items-center gap-3 animate-pulse"
         >
           <RefreshCw className="w-4 h-4 text-amber-400 animate-spin flex-shrink-0" aria-hidden="true" />
           <div className="text-xs text-slate-300">
-            <span className="font-semibold text-amber-400 block mb-0.5">בדיקה אלגוריתמית בפעולה</span>
-            <span className="font-mono text-slate-400">{loadingStep}</span>
+            <span className="font-semibold text-amber-400 block mb-0.5">
+              {isNetworkFetching ? 'מתחבר ומוריד את דף האתר...' : 'בדיקה אלגוריתמית בפעולה'}
+            </span>
+            <span className="font-mono text-slate-400">
+              {loadingStep || 'מנתח מבנה תגיות, טיפוגרפיה וסגנונות...'}
+            </span>
           </div>
         </div>
       )}
@@ -340,23 +387,32 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
       {fetchError && (
         <div
           role="alert"
-          className="mt-4 p-4 bg-slate-950 border border-rose-500/40 rounded-lg text-xs space-y-2 text-rose-300"
+          className="mt-4 p-4 bg-slate-950 border border-amber-500/40 rounded-lg text-xs space-y-3"
         >
-          <div className="flex items-center gap-2 font-semibold text-rose-200 text-sm">
-            <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" aria-hidden="true" />
-            <span>כשל בגישה ישירה לאתר</span>
+          <div className="flex items-center gap-2 font-semibold text-amber-400 text-sm">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+            <span>האתר מוגן מפני סריקה ישירה ברשת</span>
           </div>
           <p className="leading-relaxed text-slate-300">
             {fetchError}
           </p>
-          <div className="pt-1">
+          <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-slate-800">
             <button
               type="button"
               onClick={() => setActiveTab('html')}
-              className="text-amber-400 hover:text-amber-300 underline font-medium text-xs flex items-center gap-1"
+              className="text-amber-400 hover:text-amber-300 underline font-medium text-xs flex items-center gap-1 cursor-pointer"
             >
               <Code2 className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>מעבר להדבקת קוד HTML (עוקף חסימות רשת)</span>
+              <span>הדבקת קוד HTML ידנית (פועל תמיד)</span>
+            </button>
+            <span className="text-slate-600">•</span>
+            <button
+              type="button"
+              onClick={() => handleSelectPreset(DEMO_PRESET_SITES[0])}
+              className="text-slate-300 hover:text-white underline font-medium text-xs flex items-center gap-1 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
+              <span>הרצת בדיקה מיידית על אתר דוגמה</span>
             </button>
           </div>
         </div>
@@ -364,9 +420,9 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
 
       {/* Documented Demonstration Presets */}
       <div className="mt-6 pt-4 border-t border-slate-800">
-        <div className="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1.5">
+        <div className="text-xs font-semibold text-slate-400 mb-2.5 flex items-center gap-1.5">
           <FileText className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-          <span>דוגמאות מתועדות להמחשת הדוח (לבדיקה ללא קישור חיצוני):</span>
+          <span>דוגמאות מתועדות להמחשת הבדיקה והדוח:</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -375,7 +431,7 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
               key={preset.id}
               type="button"
               onClick={() => handleSelectPreset(preset)}
-              className="text-right p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 hover:bg-slate-850 transition-colors group flex flex-col justify-between"
+              className="text-right p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-850 transition-all group flex flex-col justify-between cursor-pointer"
             >
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -391,8 +447,8 @@ export const ScannerInput: React.FC<ScannerInputProps> = ({
                 </p>
               </div>
 
-              <div className="mt-2 text-[10px] font-mono text-slate-500 group-hover:text-slate-300 flex items-center gap-1">
-                <span>טעינת דוגמה זו</span>
+              <div className="mt-2 text-[10px] font-mono text-slate-500 group-hover:text-amber-300 flex items-center gap-1">
+                <span>לחץ לסריקת דוגמה זו</span>
                 <ArrowLeft className="w-3 h-3 group-hover:-translate-x-1 transition-transform" aria-hidden="true" />
               </div>
             </button>
