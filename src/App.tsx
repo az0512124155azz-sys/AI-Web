@@ -1,102 +1,85 @@
 import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { ScannerInput } from './components/ScannerInput';
-import { ScoreGauge } from './components/ScoreGauge';
-import { CategoryBreakdown } from './components/CategoryBreakdown';
-import { FlagsList } from './components/FlagsList';
-import { PromptGeneratorModal } from './components/PromptGeneratorModal';
-import { MethodologyModal } from './components/MethodologyModal';
-import { AnalysisResult, CategoryKey } from './lib/types';
+import { AuditSummary } from './components/AuditSummary';
+import { FindingsReport } from './components/FindingsReport';
+import { ImprovementPrompt } from './components/ImprovementPrompt';
+import { MethodologySection } from './components/MethodologySection';
+import { AuditReport } from './lib/types';
 import { analyzeWebsiteHtml } from './lib/detector';
-import { PRESET_SITES } from './lib/presets';
-import { ShieldAlert, Sparkles, Wand2, Compass, Layers, CheckCircle2, ArrowDown } from 'lucide-react';
 
 export default function App() {
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [report, setReport] = useState<AuditReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<CategoryKey | 'all'>('all');
-  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
-  const [isMethodologyModalOpen, setIsMethodologyModalOpen] = useState(false);
 
   const handleAnalyze = async (html: string, sourceUrl?: string) => {
     setIsLoading(true);
 
     try {
-      // Step-by-step simulation to visualize the 5 deterministic scanner stages
-      setLoadingStep('טוען עץ DOM ומשקף מבנה אלמנטים...');
-      await new Promise((r) => setTimeout(r, 220));
+      setLoadingStep('טוען את עץ ה-DOM ומחלץ כותרות ופסקאות...');
+      await new Promise((r) => setTimeout(r, 160));
 
-      setLoadingStep('סורק ביטויי מפתח מנופחים וקלישאות LLM (Regex Dictionary)...');
-      await new Promise((r) => setTimeout(r, 220));
+      setLoadingStep('מבצע בדיקת ביטויים שיווקיים וסופרלטיבים באמצעות מילון אלגוריתמי...');
+      await new Promise((r) => setTimeout(r, 160));
 
-      setLoadingStep('מאתר פלטת סגול/אינדיגו, אפקטי זוהר ו-Glassmorphism...');
-      await new Promise((r) => setTimeout(r, 220));
+      setLoadingStep('בודק מאפייני צבע, הילות רקע ואפקטי ערפול...');
+      await new Promise((r) => setTimeout(r, 140));
 
-      setLoadingStep('מנתח סימטריה של גריד 3 כרטיסיות וקישורי סרק...');
-      await new Promise((r) => setTimeout(r, 200));
+      setLoadingStep('מנתח סימטריה של גריד וקישורי סרק...');
+      await new Promise((r) => setTimeout(r, 140));
 
-      setLoadingStep('מחשב ציון משוקלל ומייצר פרומפט שדרוג ייעודי...');
-      await new Promise((r) => setTimeout(r, 150));
+      setLoadingStep('מחשב את ציון התבניתיות ומגבש את ממצאי הביקורת...');
+      await new Promise((r) => setTimeout(r, 120));
 
-      // Pure algorithmic analysis - NO AI API CALLS!
-      const analysis = analyzeWebsiteHtml(html, sourceUrl);
-      setResult(analysis);
-      setSelectedCategory('all');
+      // Deterministic rule-based evaluation - no AI API calls!
+      const auditResult = analyzeWebsiteHtml(html, sourceUrl);
+      setReport(auditResult);
 
-      // Scroll smoothly to results
       setTimeout(() => {
-        const el = document.getElementById('results-section');
+        const el = document.getElementById('audit-report-container');
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-      }, 100);
+      }, 80);
     } catch (err) {
-      console.error('Analysis error:', err);
+      console.error('Audit analysis failed:', err);
     } finally {
       setIsLoading(false);
       setLoadingStep('');
     }
   };
 
-  const handleScrollToRecommendations = () => {
-    const el = document.getElementById('recommendations-section');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-amber-500/30 selection:text-amber-200">
       
-      {/* Top Navbar */}
-      <Header onOpenMethodology={() => setIsMethodologyModalOpen(true)} />
+      {/* Product Top Bar */}
+      <Header />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10">
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
         
-        {/* Hero Section */}
-        <section className="text-center max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold">
-            <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-            <span>סורק ה-AI Slop המוביל לדפי אינטרנט</span>
+        {/* Intro Section with Single H1 */}
+        <section aria-labelledby="main-heading" className="space-y-2.5">
+          <div className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">
+            ביקורת עיצוב ותוכן • הערכת שבלוניות
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
-            כמה האתר שלך נראה כמו{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400">
-              תוצר AI גנרי?
-            </span>
+          <h1 id="main-heading" className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            האתר שלכם נראה כמו תבנית AI?
           </h1>
 
-          <p className="text-sm sm:text-base text-slate-400 leading-relaxed max-w-2xl mx-auto">
-            הזן קישור לאתר או הדבק קוד HTML. המערכת תסרוק את האתר בשיטה אלגוריתמית דטרמיניסטית{' '}
-            <strong className="text-emerald-400 font-semibold">(ללא שימוש ב-AI בזיהוי)</strong>, תספק ציון התאמה מדויק, תסביר למה כל סממן נראה כמו AI, ותפיק פרומפט מותאם אישית לשדרוגו.
+          <p className="text-sm text-slate-400 leading-relaxed max-w-2xl">
+            בדיקה אלגוריתמית של מראה ותוכן תבניתיים בדפי אינטרנט. הכלי מזהה קלישאות שיווקיות, הילות צבע שכיחות, גרידים סימטריים וקישורי סרק, ומציג דוח ביקורת מבוסס ראיות לצד המלצות לשיפור.
+          </p>
+
+          <p className="text-xs text-slate-500 leading-relaxed">
+            * הכלי מעריך מידת דמיון לדפוסי עיצוב תבניתיים, ואינו מהווה הוכחה טכנולוגית לשימוש או אי-שימוש ב-AI בבניית האתר.
           </p>
         </section>
 
-        {/* Scanner Input Panel */}
-        <section className="max-w-4xl mx-auto">
+        {/* Input Form Section */}
+        <section aria-label="טופס בדיקת אתר">
           <ScannerInput
             onAnalyze={handleAnalyze}
             isLoading={isLoading}
@@ -104,123 +87,44 @@ export default function App() {
           />
         </section>
 
-        {/* Results View */}
-        {result && (
-          <section id="results-section" className="space-y-8 pt-6 animate-in fade-in slide-in-from-bottom-6 duration-300">
+        {/* Report Output Screen */}
+        {report && (
+          <div id="audit-report-container" className="space-y-8 pt-4">
             
-            {/* Score Gauge Card */}
-            <ScoreGauge
-              result={result}
-              onOpenPrompt={() => setIsPromptModalOpen(true)}
-              onScrollToRecommendations={handleScrollToRecommendations}
+            {/* 1. Summary, Score & Scope */}
+            <AuditSummary report={report} />
+
+            {/* 2. Detailed Findings (Facts vs Interpretation) */}
+            <FindingsReport
+              findings={report.findings}
+              positiveObservations={report.positiveObservations}
             />
 
-            {/* Category Breakdown (5 pillars) */}
-            <CategoryBreakdown
-              categories={result.categories}
-              selectedCategory={selectedCategory}
-              onSelectCategory={setSelectedCategory}
-            />
+            {/* 3. Practical AI Improvement Prompt */}
+            <ImprovementPrompt promptText={report.suggestedPrompt} />
 
-            {/* Flags & Detailed Explanations */}
-            <FlagsList
-              flags={result.flags}
-              selectedCategory={selectedCategory}
-            />
+            {/* 4. Methodology Explanation */}
+            <MethodologySection />
 
-            {/* Bottom Sticky Action Banner */}
-            <div className="bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 border border-amber-500/30 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
-              <div className="space-y-1 text-center sm:text-right">
-                <div className="flex items-center justify-center sm:justify-start gap-2 text-amber-400 font-bold text-lg">
-                  <Wand2 className="w-5 h-5" />
-                  <span>רוצה ש-AI ישכתב ויתקן את האתר עבורך?</span>
-                </div>
-                <p className="text-xs sm:text-sm text-slate-300">
-                  הפקנו פרומפט פיתוח מדויק המפרט בדיוק אילו קלישאות למחוק, באיזו פלטת צבעים להשתמש ואיך לעצב מחדש.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setIsPromptModalOpen(true)}
-                className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 flex items-center gap-2 whitespace-nowrap transition-all active:scale-[0.98]"
-              >
-                <Wand2 className="w-4 h-4" />
-                <span>פתח את מחולל הפרומפטים</span>
-              </button>
-            </div>
-
-          </section>
+          </div>
         )}
 
-        {/* Initial Empty State / Feature Explainer (when no scan run yet) */}
-        {!result && !isLoading && (
-          <section className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5 pt-4">
-            <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 text-right space-y-2">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center mb-3">
-                <ShieldAlert className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-white text-base">זיהוי מבוסס כללים וחוקים</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                ללא הזיות וללא קריאות ל-LLM. ניתוח דטרמיניסטי של מילים, מבנה HTML, אלמנטי CSS ואייקונים שמאפיינים תבניות V0, Lovable ו-ChatGPT.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 text-right space-y-2">
-              <div className="w-10 h-10 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center mb-3">
-                <Compass className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-white text-base">הסבר "למה זה נראה AI"</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                לא סתם ציון יבש – אלא הסבר מפורט על כל נקודת תורפה: למה גלואו סגול משדר תבנית, למה 3 כרטיסיות צועקות AI, ואיך להפוך אותן לאותנטיות.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 text-right space-y-2">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-3">
-                <Wand2 className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-white text-base">פרומפט מובנה לשדרוג</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                במקום לכתוב הוראות בעצמך, קבל Master Prompt מוכן להעתקה ל-Claude, Cursor או ChatGPT שמוחק את כל הסממנים ומייצר קוד אנושי ומקורי.
-              </p>
-            </div>
-          </section>
+        {/* Methodology (Always available if report not yet generated) */}
+        {!report && (
+          <MethodologySection />
         )}
 
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950/80 py-8 text-center text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-300 font-mono">AI Vibe Detector</span>
-            <span>• סורק אתרי אינטרנט היוריסטי</span>
-          </div>
-
-          <div className="text-emerald-400/90 font-mono text-[11px] flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>הזיהוי מתבצע באופן דטרמיניסטי על גבי ה-DOM ללא מודל AI</span>
-          </div>
-
-          <div className="text-slate-400">
-            נבנה עבור סטודיו ופיתוח אתרים מקוריים
-          </div>
+      <footer className="border-t border-slate-800 bg-slate-950 py-6 text-center text-xs text-slate-400">
+        <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <span className="font-mono">AI Vibe Detector • כלי ביקורת עיצוב ותוכן</span>
+          <span className="text-[11px] text-slate-400">
+            האבחון מבוסס חוקים דטרמיניסטיים ללא העברת נתונים למודלי AI
+          </span>
         </div>
       </footer>
-
-      {/* Modals */}
-      {result && (
-        <PromptGeneratorModal
-          isOpen={isPromptModalOpen}
-          onClose={() => setIsPromptModalOpen(false)}
-          result={result}
-        />
-      )}
-
-      <MethodologyModal
-        isOpen={isMethodologyModalOpen}
-        onClose={() => setIsMethodologyModalOpen(false)}
-      />
 
     </div>
   );

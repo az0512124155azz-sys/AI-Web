@@ -1,125 +1,180 @@
-import { AnalysisResult, CategoryKey, DetectedFlag, Severity } from './types';
+import {
+  AuditFinding,
+  AuditReport,
+  CategoryKey,
+  EvaluationScope,
+  PositiveObservation,
+  Severity,
+} from './types';
 
-// Pure algorithmic heuristic lists - ZERO AI calls used for detection!
-const AI_BUZZWORDS_EN: { word: string; weight: number; label: string }[] = [
-  { word: 'supercharge', weight: 4, label: 'Supercharge' },
-  { word: 'seamlessly', weight: 3, label: 'Seamless / Seamlessly' },
-  { word: 'seamless', weight: 3, label: 'Seamless' },
-  { word: 'revolutionize', weight: 4, label: 'Revolutionize' },
-  { word: 'elevate your', weight: 4, label: 'Elevate your...' },
-  { word: 'unleash', weight: 3, label: 'Unleash' },
-  { word: 'game-changer', weight: 4, label: 'Game-changer' },
-  { word: 'game changer', weight: 4, label: 'Game changer' },
-  { word: 'transform the way', weight: 4, label: 'Transform the way' },
-  { word: 'next-generation', weight: 3, label: 'Next-generation' },
-  { word: 'next generation', weight: 3, label: 'Next generation' },
-  { word: 'effortless', weight: 2, label: 'Effortless' },
-  { word: 'unlock the power', weight: 4, label: 'Unlock the power' },
-  { word: 'unlock your potential', weight: 4, label: 'Unlock your potential' },
-  { word: 'tailored to your', weight: 3, label: 'Tailored to your needs' },
-  { word: 'all-in-one platform', weight: 3, label: 'All-in-one platform' },
-  { word: 'all-in-one solution', weight: 3, label: 'All-in-one solution' },
-  { word: 'empower', weight: 2, label: 'Empower' },
-  { word: 'delve into', weight: 5, label: 'Delve into (classic LLM)' },
-  { word: 'tapestry', weight: 5, label: 'Tapestry (classic LLM)' },
-  { word: 'beacon of', weight: 5, label: 'Beacon of (classic LLM)' },
-  { word: 'testament to', weight: 4, label: 'Testament to' },
-  { word: 'cutting-edge', weight: 2, label: 'Cutting-edge' },
-  { word: 'frictionless', weight: 3, label: 'Frictionless' },
-  { word: 'say goodbye to', weight: 3, label: 'Say goodbye to...' },
-  { word: 'in today\'s fast-paced', weight: 4, label: "In today's fast-paced..." },
-  { word: 'reimagined', weight: 3, label: 'Reimagined' },
-  { word: 'harness the power', weight: 4, label: 'Harness the power' },
-  { word: 'ai-powered', weight: 2, label: 'AI-Powered' },
-  { word: 'powered by ai', weight: 2, label: 'Powered by AI' },
+// Algorithmic buzzwords dictionary - strictly evaluated via deterministic regex
+const DETECTED_BUZZWORDS_HE = [
+  { word: 'לשדרג את', label: 'לשדרג את' },
+  { word: 'שדרג את', label: 'שדרג את' },
+  { word: 'חוויה חלקה', label: 'חוויה חלקה' },
+  { word: 'פורץ דרך', label: 'פורץ דרך' },
+  { word: 'הדור הבא', label: 'הדור הבא' },
+  { word: 'למצות את הפוטנציאל', label: 'למצות את הפוטנציאל' },
+  { word: 'הכל-באחד', label: 'הכל-באחד' },
+  { word: 'הכל באחד', label: 'הכל באחד' },
+  { word: 'לשנות את כללי המשחק', label: 'לשנות את כללי המשחק' },
+  { word: 'בעולם המהיר', label: 'בעולם המהיר של ימינו' },
+  { word: 'לרתום את העוצמה', label: 'לרתום את העוצמה' },
+  { word: 'ללא מאמץ', label: 'ללא מאמץ' },
+  { word: 'להזניק את', label: 'להזניק את' },
+  { word: 'פתרון מושלם', label: 'פתרון מושלם' },
+  { word: 'כל מה שאתה צריך', label: 'כל מה שאתה צריך' },
 ];
 
-const AI_BUZZWORDS_HE: { word: string; weight: number; label: string }[] = [
-  { word: 'לשדרג את', weight: 3, label: 'לשדרג את' },
-  { word: 'שדרג את', weight: 3, label: 'שדרג את' },
-  { word: 'חוויה חלקה', weight: 4, label: 'חוויה חלקה' },
-  { word: 'פורץ דרך', weight: 4, label: 'פורץ דרך' },
-  { word: 'הדור הבא', weight: 3, label: 'הדור הבא' },
-  { word: 'למצות את הפוטנציאל', weight: 4, label: 'למצות את הפוטנציאל' },
-  { word: 'הכל-באחד', weight: 3, label: 'הכל-באחד' },
-  { word: 'הכל באחד', weight: 3, label: 'הכל באחד' },
-  { word: 'לשנות את כללי המשחק', weight: 4, label: 'לשנות את כללי המשחק' },
-  { word: 'בעולם המהיר', weight: 4, label: 'בעולם המהיר של ימינו' },
-  { word: 'מבוסס בינה מלאכותית', weight: 2, label: 'מבוסס בינה מלאכותית' },
-  { word: 'לרתום את העוצמה', weight: 4, label: 'לרתום את העוצמה' },
-  { word: 'ללא מאמץ', weight: 3, label: 'ללא מאמץ' },
-  { word: 'להזניק את', weight: 3, label: 'להזניק את' },
-  { word: 'פתרון מושלם', weight: 2, label: 'פתרון מושלם' },
-  { word: 'כל מה שאתה צריך', weight: 3, label: 'כל מה שאתה צריך' },
+const DETECTED_BUZZWORDS_EN = [
+  { word: 'supercharge', label: 'Supercharge' },
+  { word: 'seamlessly', label: 'Seamless / Seamlessly' },
+  { word: 'seamless', label: 'Seamless' },
+  { word: 'revolutionize', label: 'Revolutionize' },
+  { word: 'elevate your', label: 'Elevate your' },
+  { word: 'unleash', label: 'Unleash' },
+  { word: 'game-changer', label: 'Game-changer' },
+  { word: 'game changer', label: 'Game changer' },
+  { word: 'transform the way', label: 'Transform the way' },
+  { word: 'next-generation', label: 'Next-generation' },
+  { word: 'next generation', label: 'Next generation' },
+  { word: 'effortless', label: 'Effortless' },
+  { word: 'unlock the power', label: 'Unlock the power' },
+  { word: 'unlock your potential', label: 'Unlock your potential' },
+  { word: 'tailored to your', label: 'Tailored to your needs' },
+  { word: 'all-in-one', label: 'All-in-one' },
+  { word: 'empower', label: 'Empower' },
+  { word: 'delve into', label: 'Delve into' },
+  { word: 'tapestry', label: 'Tapestry' },
+  { word: 'beacon of', label: 'Beacon of' },
+  { word: 'testament to', label: 'Testament to' },
+  { word: 'cutting-edge', label: 'Cutting-edge' },
+  { word: 'say goodbye to', label: 'Say goodbye to' },
+  { word: 'in today\'s fast-paced', label: "In today's fast-paced" },
+  { word: 'reimagined', label: 'Reimagined' },
+  { word: 'harness the power', label: 'Harness the power' },
 ];
 
-// Helper to sanitize and create DOM
-function parseHtml(html: string): Document {
+function parseDocument(html: string): Document {
   if (typeof window !== 'undefined' && window.DOMParser) {
     const parser = new DOMParser();
     return parser.parseFromString(html, 'text/html');
   }
-  throw new Error('DOMParser is required for browser execution');
+  throw new Error('DOMParser is required for parsing HTML');
 }
 
-export function analyzeWebsiteHtml(html: string, sourceUrl?: string): AnalysisResult {
-  const doc = parseHtml(html);
-  const flags: DetectedFlag[] = [];
-  
-  // Extract text and basic elements
-  const pageTitle = doc.title?.trim() || 'ללא כותרת (No title tag)';
-  const metaDescTag = doc.querySelector('meta[name="description"]') || doc.querySelector('meta[property="og:description"]');
-  const metaDescription = metaDescTag?.getAttribute('content') || '';
-  const bodyText = doc.body ? doc.body.textContent || '' : '';
-  const normalizedBodyText = bodyText.toLowerCase().replace(/\s+/g, ' ');
+export function analyzeWebsiteHtml(html: string, sourceUrl?: string): AuditReport {
+  const doc = parseDocument(html);
   const rawHtmlLower = html.toLowerCase();
+  const bodyText = doc.body ? doc.body.textContent || '' : '';
+  const normalizedText = bodyText.toLowerCase().replace(/\s+/g, ' ');
 
-  // Statistics trackers
+  // 1. EXTRACT DATA & METRICS
   const words = bodyText.trim().split(/\s+/).filter(Boolean);
   const wordCount = words.length;
 
-  // ----------------------------------------------------
-  // 1. COPYWRITING & BUZZWORDS ANALYSIS (30% weight)
-  // ----------------------------------------------------
-  const detectedBuzzwords: { label: string; count: number; weight: number }[] = [];
-  let buzzwordTotalScore = 0;
+  const headings = Array.from(doc.querySelectorAll('h1, h2, h3, h4'));
+  const headingsCount = headings.length;
 
-  [...AI_BUZZWORDS_EN, ...AI_BUZZWORDS_HE].forEach((item) => {
-    const regex = new RegExp(`\\b${item.word.toLowerCase()}\\b|${item.word.toLowerCase()}`, 'gi');
-    const matches = normalizedBodyText.match(regex);
+  const paragraphs = Array.from(doc.querySelectorAll('p'));
+  const paragraphsCount = paragraphs.length;
+
+  const links = Array.from(doc.querySelectorAll('a'));
+  const linksCount = links.length;
+
+  const images = Array.from(doc.querySelectorAll('img, svg'));
+  const imagesCount = images.length;
+
+  const buttons = Array.from(doc.querySelectorAll('button, a[role="button"], a[class*="btn"], a[class*="button"]'));
+  const buttonsCount = buttons.length;
+
+  const pageTitle = doc.title?.trim() || 'עמוד ללא כותרת (ללא תגית title)';
+  const metaDesc = doc.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+
+  // Extract real text for reporting
+  const h1 = doc.querySelector('h1')?.textContent?.trim() || '';
+  const h2 = doc.querySelector('h2')?.textContent?.trim() || '';
+  const heroHeading = h1 || h2 || pageTitle;
+
+  const firstPara = paragraphs.find((p) => (p.textContent || '').trim().length > 25);
+  const subheroText = firstPara?.textContent?.trim() || metaDesc || 'לא נמצאה פסקת הסבר מובהקת ב-DOM.';
+
+  const buttonTexts = Array.from(
+    new Set(
+      buttons
+        .map((b) => (b.textContent || '').trim().replace(/\s+/g, ' '))
+        .filter((t) => t.length > 1 && t.length < 35)
+    )
+  ).slice(0, 4);
+
+  // Scope & Confidence calculation
+  const isPartialContent = wordCount < 45 || (headingsCount === 0 && paragraphsCount <= 1);
+  let confidenceLevel: EvaluationScope['confidenceLevel'] = 'high';
+  let confidenceReason = 'גבוהה: נסרקו מעל 120 מילים, עץ כותרות מובנה וקישורים מספקים לצורך הערכה מבוססת.';
+
+  if (isPartialContent) {
+    confidenceLevel = 'low';
+    confidenceReason = 'נמוכה: התוכן שחולץ דל במיוחד (פחות מ-45 מילים). הדבר מאפיין אתרי SPA (כגון React/Vue) ללא רינדור צד-שרת, עמודי שגיאה או אתרים עם חסימת גישה.';
+  } else if (wordCount < 120) {
+    confidenceLevel = 'medium';
+    confidenceReason = 'בינונית: כמות התוכן שחולצה מוגבלת (45–120 מילים). הממצאים מבוססים על האלמנטים שחולצו, אך חלק מהסעיפים לא נבחנו במלואם.';
+  }
+
+  const scope: EvaluationScope = {
+    wordCount,
+    headingsCount,
+    paragraphsCount,
+    linksCount,
+    imagesCount,
+    buttonsCount,
+    isPartialContent,
+    partialContentReason: isPartialContent
+      ? 'התוכן שחולץ חלקי בלבד. ייתכן שהאתר מבוסס JavaScript בצד הלקוח ללא תוכן סטטי ראשוני, או מוגן במערכת הגנה. מומלץ להזין את קוד ה-HTML המרונדר (View Source) ישירות.'
+      : undefined,
+    confidenceLevel,
+    confidenceReason,
+  };
+
+  const findings: AuditFinding[] = [];
+  const positiveObservations: PositiveObservation[] = [];
+
+  // 2. AUDIT FINDINGS (FACTS VS INTERPRETATION)
+
+  // A. Buzzwords in Copy
+  const foundBuzzwords: { label: string; count: number }[] = [];
+  [...DETECTED_BUZZWORDS_HE, ...DETECTED_BUZZWORDS_EN].forEach((item) => {
+    const rx = new RegExp(`\\b${item.word.toLowerCase()}\\b|${item.word.toLowerCase()}`, 'gi');
+    const matches = normalizedText.match(rx);
     if (matches && matches.length > 0) {
-      detectedBuzzwords.push({ label: item.label, count: matches.length, weight: item.weight });
-      buzzwordTotalScore += matches.length * item.weight;
+      foundBuzzwords.push({ label: item.label, count: matches.length });
     }
   });
 
-  const totalBuzzwordCount = detectedBuzzwords.reduce((sum, b) => sum + b.count, 0);
+  const totalBuzzwords = foundBuzzwords.reduce((sum, b) => sum + b.count, 0);
 
-  if (detectedBuzzwords.length >= 4 || totalBuzzwordCount >= 6) {
-    flags.push({
-      id: 'high-buzzword-density',
-      category: 'copywriting',
-      title: 'הצפת קלישאות וביטויי AI נפוצים (High AI Buzzword Density)',
-      severity: 'critical',
-      scoreContribution: Math.min(35, totalBuzzwordCount * 4),
-      whyItLooksLikeAi: 'מודלי שפה (LLMs) משתמשים שוב ושוב באותן מילות תואר מנופחות ("Supercharge", "Seamless", "Revolutionize", "לשדרג את הפוטנציאל") במקום להסביר עובדות קונקרטיות ומה המוצר באמת עושה.',
-      recommendation: 'מחק את כל הסופרלטיבים! החלף הבטחות מופשטות כמו "Supercharge your workflow" בנתונים מדידים: "חסוך 4 שעות שבועיות בניהול מלאי".',
-      snippets: detectedBuzzwords.map((b) => `"${b.label}" (הופיע ${b.count} פעמים)`),
+  if (totalBuzzwords >= 3) {
+    findings.push({
+      id: 'copy-buzzwords',
+      category: 'copy',
+      title: 'ריבוי סופרלטיבים וקלישאות שיווקיות',
+      severity: totalBuzzwords >= 6 ? 'high' : 'medium',
+      scoreImpact: Math.min(30, totalBuzzwords * 5),
+      fact: `בטקסט נספרו ${totalBuzzwords} מופעים של ביטויי מפתח מנופחים.`,
+      snippets: foundBuzzwords.map((b) => `"${b.label}" (${b.count} פעמים)`),
+      interpretation: 'מודלי שפה ותבניות שיווקיות אוטומטיות מרבים להשתמש במילות תואר מופשטות כמו "Supercharge", "Seamless" או "לשדרג את הפוטנציאל" כדי למלא תוכן ללא התחייבות לנתונים מדויקים.',
+      recommendation: 'מחקו סופרלטיבים מופשטים והחליפו אותם בעובדות מדידות: הגדירו במפורש מה הכלי עושה, לכמה משתמשים הוא מתאים וכמה זמן או עלות הוא חוסך.',
     });
-  } else if (detectedBuzzwords.length >= 1) {
-    flags.push({
-      id: 'moderate-buzzwords',
-      category: 'copywriting',
-      title: 'נוכחות ביטויי שיווק שבלוניים של AI',
-      severity: 'warning',
-      scoreContribution: Math.min(18, totalBuzzwordCount * 3),
-      whyItLooksLikeAi: 'נמצאו ביטויים אופייניים לפרומפטים גנריים של יצירת תוכן שיווקי.',
-      recommendation: 'כתוב מחדש את הפסקאות בקול אותנטי, ישיר ואישי בגובה העיניים.',
-      snippets: detectedBuzzwords.map((b) => `"${b.label}" (${b.count})`),
+  } else if (totalBuzzwords === 0 && wordCount >= 50) {
+    positiveObservations.push({
+      id: 'positive-copy-concrete',
+      title: 'היעדר סופרלטיבים מנופחים',
+      fact: 'בטקסט שנסרק לא אותרו קלישאות תוכן שכיחות של תבניות מחוללות.',
+      snippets: ['שפה עניינית ללא שימוש בביטויים מנופחים'],
+      significance: 'כתיבה ישירה ומבוססת מייצרת אמינות גבוהה יותר מול משתמשים ומרחיקה את האתר ממראה תבניתי.',
     });
   }
 
-  // Formulaic headline check: "Everything you need to..." / "The only platform you'll ever need"
+  // Formulaic openings
   const formulaicPatterns = [
     { regex: /everything you need to/i, label: 'Everything you need to...' },
     { regex: /whether you are a .* or a/i, label: 'Whether you are a [X] or a [Y]' },
@@ -127,443 +182,265 @@ export function analyzeWebsiteHtml(html: string, sourceUrl?: string): AnalysisRe
     { regex: /כל מה שאתה צריך כדי/i, label: 'כל מה שאתה צריך כדי...' },
     { regex: /בין אם אתה .* ובין אם/i, label: 'בין אם אתה [X] ובין אם [Y]' },
   ];
-  const detectedFormulas = formulaicPatterns.filter((p) => p.regex.test(normalizedBodyText));
+  const detectedFormulas = formulaicPatterns.filter((p) => p.regex.test(normalizedText));
   if (detectedFormulas.length > 0) {
-    flags.push({
-      id: 'formulaic-sentence-structures',
-      category: 'copywriting',
-      title: 'מבני משפטים נוסחתיים (Formulaic Sentence Structure)',
-      severity: 'warning',
-      scoreContribution: 12,
-      whyItLooksLikeAi: 'תבנית המשפטים "בין אם אתה X או Y" או "כל מה שאתה צריך" היא החתימה המובהקת ביותר של ChatGPT בעת כתיבת דפי נחיתה.',
-      recommendation: 'היפטר מהמבנה הנוסחתי. פתח מיד בבעיה המרכזית שהלקוח חווה או בפתרון החד-משמעי.',
+    findings.push({
+      id: 'copy-formulaic-structure',
+      category: 'copy',
+      title: 'מבני פסקאות נוסחתיים',
+      severity: 'medium',
+      scoreImpact: 14,
+      fact: `אותרו ${detectedFormulas.length} תבניות תחביריות מובְנות.`,
       snippets: detectedFormulas.map((f) => f.label),
+      interpretation: 'מבנים כגון "בין אם אתה X או Y" ו-"כל מה שאתה צריך" שכיחים מאוד בטקסטים המיוצרים על ידי מחוללים, ומקנים תחושה של נוסחה שבלונית במקום קול מותגי ייחודי.',
+      recommendation: 'נסחו מחדש את הפתיחים ישירות מתוך נקודת הכאב המרכזית של קהל היעד או ההצעה הייחודית שלכם.',
     });
   }
 
-  // ----------------------------------------------------
-  // 2. VISUAL STYLING & DESIGN TROPES (25% weight)
-  // ----------------------------------------------------
-  let visualScore = 0;
-
-  // A. Purple / Indigo / Violet Neon Gradient Glow
-  const purpleGradients = (
-    rawHtmlLower.match(/from-purple|to-indigo|from-violet|via-pink|from-fuchsia|purple-600|violet-500|indigo-600|#8b5cf6|#6366f1|#a855f7/g) || []
+  // B. Visual Styling: Glowing Neon Orbs & Gradients
+  const purpleGradientMatches = (
+    rawHtmlLower.match(
+      /from-purple|to-indigo|from-violet|via-pink|from-fuchsia|purple-600|violet-500|indigo-600|#8b5cf6|#6366f1|#a855f7|#7c3aed|rgb\(139,\s*92,\s*246\)|rgb\(99,\s*102,\s*241\)/g
+    ) || []
   ).length;
 
-  const gradientClips = (rawHtmlLower.match(/bg-clip-text|text-transparent.*bg-gradient/g) || []).length;
-  const glowingOrbs = (rawHtmlLower.match(/blur-3xl|blur-2xl|blur-xl.*opacity/g) || []).length;
+  const gradientClips = (rawHtmlLower.match(/bg-clip-text|text-transparent.*bg-gradient|-webkit-background-clip:\s*text/g) || []).length;
+  const blurElements = (rawHtmlLower.match(/blur-3xl|blur-2xl|radial-gradient/g) || []).length;
 
-  if (purpleGradients >= 4 || (purpleGradients >= 2 && gradientClips >= 1)) {
-    visualScore += 25;
-    flags.push({
-      id: 'purple-neon-gradient-trope',
-      category: 'visualStyling',
-      title: 'קלישאת הגלואו הסגול/אינדיגו הניאוני (The Purple AI Glow)',
-      severity: 'critical',
-      scoreContribution: 25,
-      whyItLooksLikeAi: 'מעל 85% מכל אתרי ה-AI שנוצרו ב-2023-2025 משתמשים באותו רקע שחור עם הילת סגול-אינדיגו זוהרת וטקסט עם מפל גרדיאנט. זו החותמת הוויזואלית הכי מזוהה עם כלי AI כמו V0 ו-Lovable.',
-      recommendation: 'בחר פלטת צבעים מובחנת ומותגית! עבור לצבעים ארציים (טרה-קוטה, זית, ענבר), כחול עמוק קלאסי או מונוכרום שוויצרי נקי ללא גרדיאנטים זוהרים.',
+  if (purpleGradientMatches >= 3 || (purpleGradientMatches >= 1 && gradientClips >= 1)) {
+    findings.push({
+      id: 'visual-purple-glow',
+      category: 'visual',
+      title: 'פלטת גלואו סגול/אינדיגו על רקע כהה',
+      severity: purpleGradientMatches >= 5 ? 'high' : 'medium',
+      scoreImpact: 24,
+      fact: `נספרו ${purpleGradientMatches} מופעי צבע סגול/אינדיגו בשילוב ${gradientClips} כותרות בטקסט שקוף-גרדיאנט ו-${blurElements} אלמנטי זוהר מטושטשים.`,
       snippets: [
-        `זוהו ${purpleGradients} מופעי צבע סגול/אינדיגו/פוקסיה בסגנון V0`,
-        gradientClips > 0 ? `כותרות עם טקסט גרדיאנט שקוף (bg-clip-text): ${gradientClips}` : '',
-        glowingOrbs > 0 ? `אלמנטי זוהר מטושטשים (blur-3xl): ${glowingOrbs}` : '',
+        `מזהי צבע: #8b5cf6 / #6366f1 / purple / indigo (${purpleGradientMatches})`,
+        gradientClips > 0 ? `טקסט גרדיאנט שקוף (clip-text): ${gradientClips}` : '',
       ].filter(Boolean),
+      interpretation: 'השילוב של רקע כהה עם אלמנטי הילה סגולים וטקסט בגרדיאנט הוא הסממן הוויזואלי המזוהה ביותר עם תבניות AI גנריות (כגון v0 ו-Lovable) בשנים 2023–2025.',
+      recommendation: 'המירו את הפלטה לצבעים מותגיים ברורים ומובחנים (למשל: כחול עמוק, ירוק יער, גווני אדמה או שחור-לבן מינימליסטי מוצק) ללא הילות ניאון מטושטשות ברקע.',
     });
   }
 
-  // B. Sparkles / Stars / Magic Wand on Badges
-  const sparkleIcons = (rawHtmlLower.match(/✨|⚡|🪄|sparkles|magic-wand|lucide-sparkles/g) || []).length;
-  const pillBadges = doc.querySelectorAll('.rounded-full, [class*="rounded-full"]');
-  let aiPillBadgeFound = false;
-
-  pillBadges.forEach((badge) => {
-    const text = badge.textContent?.toLowerCase() || '';
-    if (
-      text.includes('ai') ||
-      text.includes('בינה') ||
-      text.includes('powered') ||
-      text.includes('new') ||
-      text.includes('חדש') ||
-      text.includes('✨')
-    ) {
-      aiPillBadgeFound = true;
-    }
+  // Floating sparkle badge
+  const sparkleIcons = (rawHtmlLower.match(/✨|⚡|🪄|✦|sparkles|magic-wand|lucide-sparkles/g) || []).length;
+  const pillBadges = Array.from(doc.querySelectorAll('.rounded-full, [class*="rounded-full"], [class*="badge"], [class*="pill"]'));
+  const hasAiBadge = pillBadges.some((b) => {
+    const txt = (b.textContent || '').toLowerCase();
+    return txt.includes('ai') || txt.includes('בינה') || txt.includes('powered') || txt.includes('✨');
   });
 
-  if (sparkleIcons >= 2 || aiPillBadgeFound) {
-    visualScore += 15;
-    flags.push({
-      id: 'sparkle-pill-badge',
-      category: 'visualStyling',
-      title: 'תגית גלולה צפה עם ניצוצות (Floating Sparkle Pill Badge)',
-      severity: 'warning',
-      scoreContribution: 15,
-      whyItLooksLikeAi: 'תגית "rounded-full" קטנה בראש עמוד ה-Hero עם אייקון נצנוץ ✨ או הכיתוב "AI-Powered" היא תבנית שבלונית של תבניות מחוללי קוד.',
-      recommendation: 'אם יש לך בשורה אמיתית, הבע אותה בכותרת הראשית או בהודעה אינפורמטיבית ללא אייקוני ניצוצות וסופרלטיבים.',
-      snippets: [
-        sparkleIcons > 0 ? `אייקוני ניצוצות/קסם (✨/🪄): ${sparkleIcons}` : '',
-        aiPillBadgeFound ? 'תגית עליונה מסוג "rounded-full" בסגנון AI זוהתה' : '',
-      ].filter(Boolean),
+  if (sparkleIcons >= 1 || hasAiBadge) {
+    findings.push({
+      id: 'visual-sparkle-pill',
+      category: 'visual',
+      title: 'תגית גלולה צפה בראש העמוד',
+      severity: 'medium',
+      scoreImpact: 14,
+      fact: `זוהתה תגית צפה מעוגלת בראש העמוד${sparkleIcons > 0 ? ` לצד ${sparkleIcons} אייקוני ניצוצות (✨/🪄)` : ''}.`,
+      snippets: pillBadges.slice(0, 2).map((b) => `תגית: "${(b.textContent || '').trim().slice(0, 40)}"`),
+      interpretation: 'תגית מעוגלת (rounded-full) הממוקמת מעל הכותרת הראשית עם אייקון ניצוץ היא רכיב סטנדרטי החוזר כמעט בכל תבנית מחולל קוד.',
+      recommendation: 'אם יש הודעה או עדכון, שלבו אותו כחלק מובנה מההיררכיה הרגילה של העמוד, או ותרו על התגית לטובת כותרת ראשית חזקה וממוקדת.',
     });
   }
 
-  // C. Excessive Glassmorphism (backdrop-blur)
-  const backdropBlurCount = (rawHtmlLower.match(/backdrop-blur/g) || []).length;
-  if (backdropBlurCount >= 3) {
-    visualScore += 12;
-    flags.push({
-      id: 'glassmorphism-overload',
-      category: 'visualStyling',
-      title: 'עודף אפקט זכוכית מעורפלת (Glassmorphism Overload)',
-      severity: 'info',
-      scoreContribution: 10,
-      whyItLooksLikeAi: 'שימוש מופרז ב-backdrop-blur יחד עם גבולות דקיקים (border-white/10) מעניק מראה של תבנית מעוצבת ע"י אלגוריתם שלא נבדקה בניגודיות אמיתית.',
-      recommendation: 'צמצם את ה-glassmorphism. השתמש במשטחי צבע מוצקים (Solid) בעלי ניגודיות גבוהה ונגישות ברורה.',
-      snippets: [`נמצאו ${backdropBlurCount} אלמנטים עם backdrop-blur`],
+  // Glassmorphism (backdrop-blur)
+  const blurClasses = (rawHtmlLower.match(/backdrop-blur|backdrop-filter:\s*blur/g) || []).length;
+  if (blurClasses >= 3) {
+    findings.push({
+      id: 'visual-glassmorphism',
+      category: 'visual',
+      title: 'שימוש מרובה באפקט זכוכית מעורפלת (Backdrop Blur)',
+      severity: 'low',
+      scoreImpact: 8,
+      fact: `אותרו ${blurClasses} אלמנטים הכוללים אפקט ערפול רקע (backdrop-blur).`,
+      snippets: [`${blurClasses} מופעי backdrop-blur`],
+      interpretation: 'שכפול אפקט זכוכית מעורפלת עם גבולות שקופים דקיקים (border-white/10) מעניק מראה תבניתי ועלול לפגוע בניגודיות ובקריאות.',
+      recommendation: 'העדיפו משטחי צבע מוצקים בעלי ניגודיות גבוהה שתואמת תקני נגישות (WCAG AA).',
     });
   }
 
-  // ----------------------------------------------------
-  // 3. STRUCTURAL & LAYOUT ARCHETYPE (20% weight)
-  // ----------------------------------------------------
-  let layoutScore = 0;
+  // C. Structural Symmetry: 3-Card Grid
+  const grid3Elements = doc.querySelectorAll('.grid-cols-3, [class*="md:grid-cols-3"], [class*="lg:grid-cols-3"]');
+  const allContainers = Array.from(doc.querySelectorAll('section > div, main > div, div[class*="grid"]'));
+  const containersWithExact3Children = allContainers.filter(
+    (c) => c.children.length === 3 && c.clientHeight > 100
+  );
 
-  // A. Symmetrical 3-Card Feature Grid
-  const grid3Cards = doc.querySelectorAll('.grid-cols-3, [class*="md:grid-cols-3"], [class*="lg:grid-cols-3"]');
-  const featureSectionCards = doc.querySelectorAll('.grid > div, [class*="grid"] > div');
-  const totalCards = featureSectionCards.length;
-
-  if (grid3Cards.length >= 1) {
-    layoutScore += 18;
-    flags.push({
-      id: 'symmetrical-3-card-grid',
-      category: 'layoutArchetype',
-      title: 'גריד תכונות סימטרי של 3 כרטיסיות (Cookie-Cutter 3-Column Grid)',
-      severity: 'warning',
-      scoreContribution: 18,
-      whyItLooksLikeAi: 'הסידור של בדיוק 3 כרטיסיות זהות (אייקון בעיגול בראש, כותרת מודגשת של 2 מילים, ו-2 שורות הסבר) הוא ברירת המחדל האוטומטית של כל מחולל אתרים.',
-      recommendation: 'שבור את הסימטריה! עצב פריסת Bento Grid עם כרטיס ראשי גדול ותמונת המחשה, לצד כרטיסים צדדיים קטנים יותר, או הראה צילומי מסך אמיתיים מתוך המערכת.',
-      snippets: [`זוהו גרידים של 3 עמודות: ${grid3Cards.length}`],
+  if (grid3Elements.length > 0 || containersWithExact3Children.length >= 1) {
+    findings.push({
+      id: 'structure-3-column-grid',
+      category: 'structure',
+      title: 'גריד תכונות סימטרי של 3 כרטיסיות',
+      severity: 'medium',
+      scoreImpact: 16,
+      fact: 'זוהה אזור תכונות המחולק ל-3 כרטיסיות זהות בגודלן ובמבנהן.',
+      snippets: ['חלוקה סימטרית ל-3 עמודות עם מבנה זהה של אייקון + כותרת + תיאור קצר'],
+      interpretation: 'חלוקה סימטרית של 3 כרטיסיות עם אייקון מעוגל בראשן ושתי שורות טקסט היא ברירת המחדל האוטומטית של רוב תבניות ה-SaaS.',
+      recommendation: 'שברו את הסימטריה: בנו פריסה א-סימטרית (Bento Grid) המבליטה תכונה מרכזית אחת עם צילום מסך או נתון מוחשי, לצד תכונות משניות קטנות יותר.',
     });
   }
 
-  // B. Standard 2-Button Hero Pattern (Glowing CTA + Outline "Watch Demo")
-  const heroButtons = doc.querySelectorAll('main a, main button, header + div a, header + div button');
-  const playButtonIcons = (rawHtmlLower.match(/lucide-play|fa-play|<polygon.*points/g) || []).length;
-  const demoButtons = Array.from(heroButtons).filter((btn) => {
-    const text = btn.textContent?.toLowerCase() || '';
-    return text.includes('demo') || text.includes('הדגמה') || text.includes('watch') || text.includes('צפה');
+  // Dual Hero Buttons
+  const demoButtons = buttonTexts.filter((btn) => {
+    const l = btn.toLowerCase();
+    return l.includes('demo') || l.includes('watch') || l.includes('צפה') || l.includes('הדגמה');
   });
 
-  if (demoButtons.length > 0 && heroButtons.length >= 2) {
-    layoutScore += 12;
-    flags.push({
-      id: 'generic-hero-cta-pair',
-      category: 'layoutArchetype',
-      title: 'זוג כפתורי Hero שבלוניים (Primary Glow + "Watch Demo")',
-      severity: 'info',
-      scoreContribution: 10,
-      whyItLooksLikeAi: 'כפתור ראשי בוהק ("Get Started Free" / "התחל עכשיו") לצד כפתור שקוף עם משולש Play ("Watch Demo") הוא הדפוס המועתק ביותר מתבניות AI SaaS.',
-      recommendation: 'התמקד בהנעה אחת מרכזית ומדויקת לפעולה (Single Strong CTA) או אפשר למשתמש לחוות את המוצר מיד במקום לצפות ב"דמו".',
-      snippets: demoButtons.map((b) => `כפתור שזוהה: "${b.textContent?.trim()}"`),
+  if (buttonTexts.length >= 2 && demoButtons.length > 0) {
+    findings.push({
+      id: 'structure-dual-cta',
+      category: 'structure',
+      title: 'צמד כפתורי Hero סטנדרטי (ראשי + "צפה בהדגמה")',
+      severity: 'low',
+      scoreImpact: 8,
+      fact: `ב-Hero זוהו כפתור הנעה ראשי לצד כפתור דמו: "${demoButtons[0]}".`,
+      snippets: buttonTexts.slice(0, 2),
+      interpretation: 'השילוב של כפתור ראשי בוהק לצד כפתור שקוף עם משולש Play לצפייה בדמו הוא דפוס החוזר באופן אוטומטי בתבניות רבות.',
+      recommendation: 'הגדירו פעולה ראשית אחת ברורה וחד-משמעית, או אפשרו חוויה ישירה של המוצר.',
     });
   }
 
-  // C. 3-Tier Pricing with "Most Popular" center badge
-  const pricingCards = doc.querySelectorAll('[class*="pricing"], [id*="pricing"], [class*="plan"]');
-  const popularBadges = (rawHtmlLower.match(/most popular|הכי פופולרי|מומלץ|best value|popular/gi) || []).length;
-
-  if (popularBadges > 0 || (pricingCards.length >= 3 && pricingCards.length <= 4)) {
-    layoutScore += 10;
-    flags.push({
-      id: 'pricing-table-cliche',
-      category: 'layoutArchetype',
-      title: 'מבנה תמחור 3 דרגות קלאסי (Classic 3-Tier Pricing Cliché)',
-      severity: 'info',
-      scoreContribution: 10,
-      whyItLooksLikeAi: 'שלוש עמודות (בסיסי, מקצועי, ארגוני) כאשר האמצעית מודגשת עם גבול סגול/גלולה "Most Popular".',
-      recommendation: 'עצב את מודל התמחור לפי הערך הייחודי של העסק שלך במקום לשכפל את תבנית ה-SaaS הגנרית.',
-      snippets: [`זוהו תגיות פופולריות/המלצה: ${popularBadges}`],
-    });
-  }
-
-  // ----------------------------------------------------
-  // 4. STOCK ASSETS & TECHNICAL FINGERPRINTS (15% weight)
-  // ----------------------------------------------------
-  let stockScore = 0;
-
-  // Placeholder links (#)
-  const links = Array.from(doc.querySelectorAll('a'));
+  // D. Identity & Real-World Anchors
   const placeholderLinks = links.filter((a) => {
     const href = a.getAttribute('href');
     return !href || href === '#' || href === 'javascript:void(0)' || href === '';
   });
 
-  if (links.length > 0 && placeholderLinks.length / links.length > 0.45 && placeholderLinks.length >= 3) {
-    stockScore += 20;
-    flags.push({
-      id: 'dead-placeholder-links',
-      category: 'stockAndAssets',
-      title: 'ריבוי קישורי סרק פיקטיביים (href="#")',
-      severity: 'critical',
-      scoreContribution: 20,
-      whyItLooksLikeAi: 'מודלי AI מייצרים לעיתים קרובות תפריטי ניווט ופוטר מלאים בקישורים שמובילים לשום מקום (#).',
-      recommendation: 'הסר קישורים מיותרים. אתר אמיתי כולל עמודי מדיניות, תנאי שימוש, יצירת קשר ובלוג אמיתי.',
-      snippets: [`${placeholderLinks.length} מתוך ${links.length} קישורים באתר מובילים ל-#`],
+  if (links.length > 0 && placeholderLinks.length / links.length > 0.35 && placeholderLinks.length >= 3) {
+    findings.push({
+      id: 'identity-placeholder-links',
+      category: 'identity',
+      title: 'קישורי סרק פיקטיביים בתפריט או בפוטר',
+      severity: 'high',
+      scoreImpact: 18,
+      fact: `${placeholderLinks.length} מתוך ${links.length} קישורים באתר מובילים ל-# או ריקים.`,
+      snippets: [`${Math.round((placeholderLinks.length / links.length) * 100)}% מכלל הקישורים הם קישורי סרק`],
+      interpretation: 'אתרים שנוצרו על בסיס תבניות AI לא שלמות מכילים לעיתים קרובות תפריטים ופוטר עם קישורי סרק שלא חוברו לעמודים ממשיים.',
+      recommendation: 'הסירו קישורים שאינם פעילים. ודאו שכל קישור מוביל לעמוד ממשי: מדיניות פרטיות, תנאי שימוש, יצירת קשר או בלוג.',
+    });
+  } else if (links.length >= 4 && placeholderLinks.length === 0) {
+    positiveObservations.push({
+      id: 'positive-real-links',
+      title: 'מערך קישורים תקין ומלא',
+      fact: 'כל הקישורים שנסרקו באתר מובילים לנתיבים מוגדרים ללא קישורי סרק (#).',
+      snippets: [`${links.length} קישורים תקינים נבדקו`],
+      significance: 'מעיד על גימור שלם ומבנה תוכן פעיל ולא על תבנית ראשונית שלא הושלמה.',
     });
   }
 
-  // Meta Generator & Tool fingerprints
-  const metaGenerator = doc.querySelector('meta[name="generator"]')?.getAttribute('content')?.toLowerCase() || '';
-  const isV0OrBolt = 
-    metaGenerator.includes('v0') || 
-    metaGenerator.includes('bolt') || 
-    metaGenerator.includes('lovable') ||
-    rawHtmlLower.includes('v0.dev') ||
-    rawHtmlLower.includes('lovable.dev');
-
-  if (isV0OrBolt) {
-    stockScore += 30;
-    flags.push({
-      id: 'generator-fingerprint',
-      category: 'stockAndAssets',
-      title: 'חתימת קוד טכנית של מחולל AI (v0 / Lovable / Bolt)',
-      severity: 'critical',
-      scoreContribution: 30,
-      whyItLooksLikeAi: 'נמצאו תגיות מטא או מחלקות המעידות ישירות על ייצוא ממחולל קוד AI אוטומטי.',
-      recommendation: 'נקה תגיות מטא של כלי הפיתוח והגדר מטא-דאטה מותאם אישית למותג שלך.',
-      snippets: [`Generator tag / footprint: ${metaGenerator || 'v0/lovable artifact'}`],
+  // Real contact anchors
+  const hasPhoneOrAddress = /tel:|mailto:|headoffice|כתובת|טלפון|ח\.פ|copyright/i.test(normalizedText);
+  if (hasPhoneOrAddress) {
+    positiveObservations.push({
+      id: 'positive-contact-anchors',
+      title: 'עוגנים עסקיים מהעולם האמיתי',
+      fact: 'זוהו פרטי התקשרות או עוגנים עסקיים (דוא"ל, טלפון, כתובת פיזית או זכויות יוצרים).',
+      snippets: ['נוכחות פרטי קשר או כתובת מאומתים בטקסט'],
+      significance: 'פרטי קשר ממשיים הם עוגן מהימנות קריטי המבדיל אתר אמיתי ממעטפת תבניתית ריקה.',
+    });
+  } else if (wordCount > 70) {
+    findings.push({
+      id: 'identity-missing-anchors',
+      category: 'identity',
+      title: 'היעדר פרטי התקשרות או עוגנים מהעולם האמיתי',
+      severity: 'medium',
+      scoreImpact: 12,
+      fact: 'בטקסט שנסרק לא אותרו מספרי טלפון, כתובת פיזית או פרטי רישום עסק.',
+      snippets: ['לא נמצאו פרטי קשר קונקרטיים בפוטר או בגוף העמוד'],
+      interpretation: 'תבניות AI לרוב חסרות פרטים מהעולם האמיתי ונראות כמו ישות וירטואלית כללית.',
+      recommendation: 'הוסיפו בפוטר פרטי יצירת קשר מלאים, כתובת פיזית, מספר טלפון ופרטי חברה.',
     });
   }
 
-  // Stock Avatars & Images
-  const imgElements = Array.from(doc.querySelectorAll('img'));
-  const stockAvatars = imgElements.filter((img) => {
-    const src = img.getAttribute('src') || '';
-    return src.includes('unsplash.com/photo-') || src.includes('randomuser.me') || src.includes('i.pravatar.cc') || src.includes('placeholder.com');
-  });
+  // 3. SCORE CALCULATION
+  // Sum score impacts, normalize to 0-100
+  const rawScore = findings.reduce((sum, f) => sum + f.scoreImpact, 0);
+  const templateScoreValue = Math.min(100, Math.max(0, rawScore));
 
-  if (stockAvatars.length >= 2) {
-    stockScore += 15;
-    flags.push({
-      id: 'generic-stock-avatars',
-      category: 'stockAndAssets',
-      title: 'תמונות פרופיל גנריות (Stock Personas)',
-      severity: 'warning',
-      scoreContribution: 15,
-      whyItLooksLikeAi: 'שימוש בתמונות Unsplash אקראיות של אנשים מחייכים עם שמות כמו "Sarah J., VP of Engineering at TechCorp" כהוכחה חברתית פיקטיבית.',
-      recommendation: 'החלף בציטוטי לקוחות אמיתיים, קישורים לפרופילי LinkedIn מאומתים, או מקרי בוחן (Case Studies) מפורטים.',
-      snippets: stockAvatars.slice(0, 3).map((img) => img.getAttribute('src')?.slice(0, 60) + '...'),
-    });
+  let ratingLabel = 'רמת תבניתיות נמוכה (עיצוב מותאם ואותנטי)';
+  if (templateScoreValue >= 75) {
+    ratingLabel = 'רמת תבניתיות גבוהה מאוד (ריבוי סממני תבנית)';
+  } else if (templateScoreValue >= 50) {
+    ratingLabel = 'רמת תבניתיות ניכרת (שילוב דפוסים שכיחים)';
+  } else if (templateScoreValue >= 25) {
+    ratingLabel = 'רמת תבניתיות מתונה (מאפיינים בודדים מוכרים)';
   }
 
-  // ----------------------------------------------------
-  // 5. TYPOGRAPHY & IDENTITY MONOTONY (10% weight)
-  // ----------------------------------------------------
-  let typographyScore = 0;
+  const scoreExplanation = 'מדד התבניתיות מעריך את מידת הדמיון לדפוסי עיצוב וקופי שכיחים בתבניות ומחוללי קוד. המדד אינו קובע האם נעשה שימוש ב-AI בבניית האתר, אלא מזהה שבלונות שפוגעות בייחודיות.';
 
-  // Single system font without display font
-  const fontLinks = (rawHtmlLower.match(/fonts\.googleapis\.com\/css2\?family=([^"&]+)/g) || []);
-  const usesOnlyInter = rawHtmlLower.includes('font-sans') && !rawHtmlLower.includes('font-serif') && !rawHtmlLower.includes('font-mono') && fontLinks.length <= 1;
-
-  if (usesOnlyInter) {
-    typographyScore += 12;
-    flags.push({
-      id: 'default-inter-typography',
-      category: 'typographyIdentity',
-      title: 'טיפוגרפיה אחידה וברירת-מחדל (Default Sans Monotony)',
-      severity: 'info',
-      scoreContribution: 10,
-      whyItLooksLikeAi: 'כל מחוללי ה-AI משתמשים בפונט ברירת המחדל Inter / System-UI לכל רוחב האתר ללא שילוב של פונט כותרות מובחן (Display / Serif) שמעניק אופי.',
-      recommendation: 'צור היררכיה טיפוגרפית עשירה: שלב פונט כותרות עם נוכחות (Serif מעודן, גופן סריפי אלגנטי או גופן מודרני מודגש) לצד גופן קריאה נוח.',
-      snippets: ['נמצא שימוש בגופן יחיד ללא גיוון היררכי או פונט מותג'],
-    });
-  }
-
-  // Missing real contact details or physical address
-  const hasPhoneOrAddress = /tel:|mailto:|headoffice|כתובת|טלפון|ח\.פ|copyright/i.test(normalizedBodyText);
-  if (!hasPhoneOrAddress && words.length > 80) {
-    typographyScore += 10;
-    flags.push({
-      id: 'missing-real-world-anchor',
-      category: 'typographyIdentity',
-      title: 'היעדר עוגנים מהעולם האמיתי (No Real-World Anchors)',
-      severity: 'warning',
-      scoreContribution: 10,
-      whyItLooksLikeAi: 'אתרי AI לרוב חסרים כתובת פיזית, מספר טלפון, פרטי חברה רשומים, או צוות אמיתי, ונראים כמו "מעטפת וירטואלית".',
-      recommendation: 'הוסף בפוטר פרטי יצירת קשר אמיתיים, מיקום פיזי, רישום חברה ומדיניות פרטיות ברורה.',
-      snippets: ['לא נמצאו מספרי טלפון, כתובת פיזית או פרטי יצירת קשר קונקרטיים'],
-    });
-  }
-
-  // ----------------------------------------------------
-  // WEIGHTED TOTAL SCORE CALCULATION
-  // ----------------------------------------------------
-  const normCopyScore = Math.min(100, Math.round((buzzwordTotalScore / 18) * 100));
-  const normVisualScore = Math.min(100, Math.round((visualScore / 35) * 100));
-  const normLayoutScore = Math.min(100, Math.round((layoutScore / 30) * 100));
-  const normStockScore = Math.min(100, Math.round((stockScore / 40) * 100));
-  const normTypoScore = Math.min(100, Math.round((typographyScore / 20) * 100));
-
-  // Category weights: Copy 30%, Visual 25%, Layout 20%, Stock 15%, Typo 10%
-  const weightedScore = Math.round(
-    normCopyScore * 0.3 +
-    normVisualScore * 0.25 +
-    normLayoutScore * 0.2 +
-    normStockScore * 0.15 +
-    normTypoScore * 0.1
-  );
-
-  const overallAiScore = Math.min(100, Math.max(0, weightedScore));
-
-  // Determine Verdict
-  let verdict: AnalysisResult['verdict'];
-  if (overallAiScore <= 22) {
-    verdict = {
-      label: 'עיצוב אנושי אותנטי',
-      sublabel: 'Human-Crafted & Bespoke',
-      level: 'authentic',
-      color: 'text-emerald-400',
-      bgGradient: 'from-emerald-500/20 via-teal-500/10 to-transparent',
-    };
-  } else if (overallAiScore <= 48) {
-    verdict = {
-      label: 'נגיעות AI קלות',
-      sublabel: 'Subtle AI Touches / Mostly Human',
-      level: 'moderate',
-      color: 'text-sky-400',
-      bgGradient: 'from-sky-500/20 via-blue-500/10 to-transparent',
-    };
-  } else if (overallAiScore <= 74) {
-    verdict = {
-      label: 'ניחוח AI מובהק',
-      sublabel: 'Strong AI Signature',
-      level: 'high',
-      color: 'text-amber-400',
-      bgGradient: 'from-amber-500/20 via-orange-500/10 to-transparent',
-    };
-  } else {
-    verdict = {
-      label: 'תבנית AI גנרית מובהקת',
-      sublabel: 'Pure AI Slop Blueprint',
-      level: 'extreme',
-      color: 'text-rose-400',
-      bgGradient: 'from-rose-500/20 via-red-500/10 to-transparent',
-    };
-  }
-
-  // ----------------------------------------------------
-  // DYNAMIC AI REFACTOR PROMPT GENERATION
-  // ----------------------------------------------------
-  const prompt = buildRefactorPrompt({
+  // 4. TAILORED PRACTICAL PROMPT
+  const suggestedPrompt = buildImprovementPrompt({
     pageTitle,
-    flags,
-    detectedBuzzwords: detectedBuzzwords.map((b) => b.label),
-    overallAiScore,
+    heroHeading,
+    subheroText,
+    buttonTexts,
+    findings,
+    foundBuzzwords: foundBuzzwords.map((b) => b.label),
+    templateScoreValue,
   });
 
   return {
     url: sourceUrl,
     analyzedAt: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
     pageTitle,
-    metaDescription,
-    overallAiScore,
-    verdict,
-    categories: {
-      copywriting: {
-        name: 'קופי וקלישאות תוכן',
-        score: normCopyScore,
-        weight: 30,
-        flagCount: flags.filter((f) => f.category === 'copywriting').length,
-        description: 'זיהוי ביטויי מפתח מנופחים של מודלי שפה, ניסוחים נוסחתיים והיעדר נתונים ממשיים.',
-      },
-      visualStyling: {
-        name: 'שפה חזותית וצבעוניות',
-        score: normVisualScore,
-        weight: 25,
-        flagCount: flags.filter((f) => f.category === 'visualStyling').length,
-        description: 'איתור רקע שחור עם גלואו סגול/אינדיגו, עודף אפקט זכוכית מעורפלת ותגיות ניצוצות.',
-      },
-      layoutArchetype: {
-        name: 'מבנה וגריד שבלוני',
-        score: normLayoutScore,
-        weight: 20,
-        flagCount: flags.filter((f) => f.category === 'layoutArchetype').length,
-        description: 'בדיקת סימטריה גנרית: 3 כרטיסיות אחידות, הירו עם שני כפתורים וטבלת מחירים צפויה.',
-      },
-      stockAndAssets: {
-        name: 'נכסים ומטא-דאטה טכני',
-        score: normStockScore,
-        weight: 15,
-        flagCount: flags.filter((f) => f.category === 'stockAndAssets').length,
-        description: 'זיהוי קישורי סרק (#), תמונות סטוק Unsplash גנריות וחתימות של מחוללי קוד.',
-      },
-      typographyIdentity: {
-        name: 'טיפוגרפיה ועוגני מציאות',
-        score: normTypoScore,
-        weight: 10,
-        flagCount: flags.filter((f) => f.category === 'typographyIdentity').length,
-        description: 'מונוטוניות בגופנים (Inter בלבד) והיעדר עוגנים פיזיים של עסק אותנטי.',
-      },
+    metaDescription: metaDesc,
+    templateScore: {
+      score: templateScoreValue,
+      ratingLabel,
+      explanation: scoreExplanation,
     },
-    flags,
-    statistics: {
-      wordCount,
-      buzzwordCount: totalBuzzwordCount,
-      gradientElementsCount: purpleGradients,
-      cardCount: totalCards,
-      placeholderLinksCount: placeholderLinks.length,
-      badgeCount: pillBadges.length,
-      imageCount: imgElements.length,
+    scope,
+    findings: findings.sort((a, b) => {
+      const order = { high: 0, medium: 1, low: 2 };
+      return order[a.severity] - order[b.severity];
+    }),
+    positiveObservations,
+    extractedHeadlines: {
+      hero: heroHeading,
+      subhero: subheroText,
+      buttons: buttonTexts,
     },
-    aiRefactorPrompt: prompt,
+    suggestedPrompt,
   };
 }
 
-// Builds the requested ready-to-copy AI Refactor prompt
-function buildRefactorPrompt(params: {
+function buildImprovementPrompt(params: {
   pageTitle: string;
-  flags: DetectedFlag[];
-  detectedBuzzwords: string[];
-  overallAiScore: number;
+  heroHeading: string;
+  subheroText: string;
+  buttonTexts: string[];
+  findings: AuditFinding[];
+  foundBuzzwords: string[];
+  templateScoreValue: number;
 }): string {
-  const { pageTitle, flags, detectedBuzzwords, overallAiScore } = params;
+  const { pageTitle, heroHeading, subheroText, buttonTexts, findings, foundBuzzwords, templateScoreValue } = params;
 
-  const buzzwordList = detectedBuzzwords.length > 0 
-    ? detectedBuzzwords.slice(0, 10).join(', ') 
-    : 'supercharge, seamless, elevate, revolutionize';
-
-  const criticalIssues = flags
-    .filter((f) => f.severity === 'critical' || f.severity === 'warning')
+  const buzzwordsStr = foundBuzzwords.length > 0 ? foundBuzzwords.join(', ') : 'סופרלטיבים מופשטים (כמו "שדרג את הפוטנציאל", "חוויה חלקה")';
+  const findingsList = findings
     .map((f, i) => `${i + 1}. [${f.title}]: ${f.recommendation}`)
     .join('\n');
 
-  return `You are an elite principal web designer and veteran product copywriter known for distinctive, high-converting human web experiences.
+  return `אני מבקש לשפר את עיצוב האתר והקופי של "${pageTitle}".
+בדוח ביקורת עיצוב ותוכן עלה ציון תבניתיות של ${templateScoreValue}/100.
+המטרה: להסיר סממנים שבלוניים ולייצר מראה אותנטי, נגיש ומותאם אישית.
 
-I need you to completely refactor and de-slop our website ("${pageTitle}").
-Currently, an algorithmic AI-vibe scanner flagged our site with an AI Slop Score of ${overallAiScore}/100.
-We need to eliminate every single AI cliché and replace it with bespoke, human-crafted design and sharp editorial copywriting.
+נתונים מקוריים שחולצו מהאתר:
+- כותרת ראשית נוכחית: "${heroHeading}"
+- פסקת הסבר נוכחית: "${subheroText.slice(0, 160)}"
+- כפתורים שזוהו: ${buttonTexts.join(', ') || 'התחל עכשיו'}
+- ביטויים אסורים לשימוש: ${buzzwordsStr}
 
-CRITICAL DIRECTIVES:
+הנחיות לביצוע:
+1. קופי מבוסס ערך: נסחו מחדש את הכותרת הראשית ב-5 עד 7 מילים שמסבירות בדיוק מה המוצר עושה ומה הערך הממשי שלו, ללא אף סופרלטיב.
+2. פריסה טיפוגרפית: החליפו רקע כהה עם הילות סגול/אינדיגו בפלטת צבעים מותגית מוצקה בעלת ניגודיות גבוהה.
+3. מבנה: שברו גריד סימטרי של 3 כרטיסיות זהות והמירו אותו לפריסת Bento Grid עם כרטיס אחד מוביל שמציג צילום מסך או תוצאה אמיתית.
+4. נקו קישורי סרק (#) והגדירו הנעה ברורה לפעולה אחת.
 
-1. COPYWRITING - ZERO SLOP & CONCRETE OUTCOMES:
-- Ruthlessly purge these detected AI buzzwords: ${buzzwordList}.
-- Delete all formulaic openings like "Whether you are...", "Everything you need to...", or "In today's fast-paced world".
-- Write like a confident founder talking to a peer: specific metrics, concrete workflows, and verifiable customer outcomes.
-- State exactly what the product does in the first 5 words of the hero headline.
+סעיפי תיקון ספציפיים על פי הדוח:
+${findingsList}
 
-2. VISUAL IDENTITY & PALETTE:
-- BAN the generic "dark mode with neon purple/indigo radial glow" and gradient text (bg-clip-text).
-- Shift to a deliberate, authentic color palette (e.g., warm stone & terracotta, deep forest slate with crisp parchment accents, or high-contrast architectural monochrome).
-- Eliminate floating sparkle badges ("✨ AI-Powered") and excessive glassmorphism (backdrop-blur with border-white/10).
-
-3. LAYOUT & ASYMMETRICAL RHYTHM:
-- Break the generic 3-card symmetrical feature grid into a modern Bento Grid or an editorial story layout with varying card weights, real UI previews, and micro-interactions.
-- Replace the dual CTA pattern ("Get Started Free" + "Watch Demo") with one unified, frictionless action.
-
-SPECIFIC ISSUES TO FIX BASED ON SCANNER FLAGS:
-${criticalIssues || '1. Elevate typography pairing (use a strong editorial serif or distinctive display sans).\n2. Add concrete social proof with verifiable company details.\n3. Make spacing rhythmic and intentional rather than uniform py-20 blocks.'}
-
-Deliver the complete, production-ready code with responsive Tailwind CSS, clean semantic HTML, and zero placeholder links (#).`;
+החזירו את קוד ה-HTML וה-Tailwind CSS המעודכן, נגיש ורספונסיבי.`;
 }
