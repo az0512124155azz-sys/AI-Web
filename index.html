@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Vibe Detector | מזהה אתרי AI ומשפר עיצוב</title>
+    <script>
+      // Automatically ensure trailing slash for GitHub Pages repo subfolder
+      if (location.pathname === '/AI-Web') {
+        location.replace('/AI-Web/' + location.search + location.hash);
+      }
+      window.addEventListener('error', function(e) {
+        var loaderText = document.getElementById('loader-status');
+        if (loaderText) {
+          loaderText.innerHTML = '<span style="color: #f87171;">שגיאה בטעינת הקוד: ' + (e.message || 'קובץ סקריפט חסר') + '</span>';
+        }
+      }, true);
+    </script>
     <meta name="description" content="סריקה וזיהוי של אתרים שנראים כמו תוצר AI. ציון AI Slop, פירוט הליקויים, המלצות לשיפור ופרומפט מותאם אישית לשדרוג - ללא שימוש ב-AI בזיהוי!" />
     <meta property="og:title" content="AI Vibe Detector | מזהה אתרי AI ומשפר עיצוב" />
     <meta property="og:description" content="בדוק כמה האתר שלך נראה כמו תבנית AI גנרית. אלגוריתם דטרמיניסטי ללא AI, פירוט נקודות תורפה והנחיות לשיפור." />
@@ -17,7 +29,7 @@
     <div id="root" style="min-height: 100vh; background-color: #020617;">
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: system-ui, sans-serif; color: #94a3b8; font-size: 14px; gap: 12px;">
         <div style="width: 24px; height: 24px; border: 2px solid #334155; border-top-color: #f59e0b; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-        <div>טוען את AI Vibe Detector...</div>
+        <div id="loader-status">טוען את AI Vibe Detector...</div>
         <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
       </div>
     </div>
