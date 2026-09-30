@@ -1,0 +1,6 @@
+{
+  "name": "AI Vibe Detector - מזהה אתרי AI",
+  "description": "סריקה וזיהוי של אתרים שנראים כמו תוצר AI. ציון AI Slop, פירוט הליקויים, המלצות לשיפור ופרומפט מותאם אישית לשדרוג - ללא שימוש ב-AI בזיהוי!",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
