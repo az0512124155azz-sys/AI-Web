@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="he" dir="rtl">
+<html lang="he" dir="rtl" style="background-color: #020617; color: #f8fafc;">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,9 +13,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-amber-500/30 selection:text-amber-200">
-    <div id="root"></div>
+  <body style="background-color: #020617; color: #f8fafc; margin: 0;" class="bg-slate-950 text-slate-100 min-h-screen selection:bg-amber-500/30 selection:text-amber-200">
+    <div id="root" style="min-height: 100vh; background-color: #020617;">
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: system-ui, sans-serif; color: #94a3b8; font-size: 14px; gap: 12px;">
+        <div style="width: 24px; height: 24px; border: 2px solid #334155; border-top-color: #f59e0b; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+        <div>טוען את AI Vibe Detector...</div>
+        <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

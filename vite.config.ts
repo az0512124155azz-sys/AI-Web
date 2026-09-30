@@ -7,8 +7,13 @@ import { defineConfig } from 'vite';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(() => {
+  // If building inside GitHub Actions, use repository name as base path (e.g., /AI-Web/)
+  const repoName = process.env.GITHUB_REPOSITORY
+    ? `/${process.env.GITHUB_REPOSITORY.split('/')[1]}/`
+    : './';
+
   return {
-    base: './',
+    base: repoName,
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
